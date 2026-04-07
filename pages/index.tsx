@@ -1,3 +1,4 @@
+import Head from 'next/head';
 import { useState, useEffect } from 'react';
 
 interface EndpointStatus {
@@ -22,15 +23,86 @@ const initialEndpoints: EndpointStatus[] = MONITORED_URLS.map((url) => ({
   uptime: 100,
 }));
 
+function StatusBadge({ status }: { status: EndpointStatus['status'] }) {
+  const dotClass =
+    status === 'up'
+      ? 'bg-green-400'
+      : status === 'down'
+      ? 'bg-red-400'
+      : 'bg-amber-400 animate-pulse';
+
+  const badgeClass =
+    status === 'up'
+      ? 'status-badge-up'
+      : status === 'down'
+      ? 'status-badge-down'
+      : 'status-badge-checking';
+
+  const label =
+    status === 'up' ? 'Operational' : status === 'down' ? 'Incident' : 'Checking';
+
+  return (
+    <span className={badgeClass}>
+      <span className={`w-1.5 h-1.5 rounded-full ${dotClass}`} />
+      {label}
+    </span>
+  );
+}
+
+function HttpCodeBadge({ code }: { code?: number }) {
+  if (code == null) return <span className="text-slate-600 text-xs font-mono">—</span>;
+  const cls = code >= 200 && code < 300 ? 'http-badge-2xx' : 'http-badge-error';
+  return <span className={cls}>{code}</span>;
+}
+
+function SkeletonRow() {
+  return (
+    <tr className="border-b border-slate-700/60">
+      <td className="px-6 py-4">
+        <div className="skeleton h-4 w-48" />
+      </td>
+      <td className="px-6 py-4">
+        <div className="skeleton h-6 w-24 rounded-full" />
+      </td>
+      <td className="px-6 py-4">
+        <div className="skeleton h-4 w-16" />
+      </td>
+      <td className="px-6 py-4">
+        <div className="skeleton h-4 w-20" />
+      </td>
+      <td className="px-6 py-4">
+        <div className="skeleton h-5 w-10 rounded" />
+      </td>
+    </tr>
+  );
+}
+
+function UptimeBar({ pct }: { pct: number }) {
+  const color = pct >= 99 ? 'bg-green-500' : pct >= 90 ? 'bg-amber-500' : 'bg-red-500';
+  const textColor = pct >= 99 ? 'text-green-400' : pct >= 90 ? 'text-amber-400' : 'text-red-400';
+  return (
+    <div className="flex items-center gap-2">
+      <div className="w-16 h-1.5 rounded-full bg-slate-700 overflow-hidden">
+        <div className={`h-full rounded-full transition-all duration-500 ${color}`} style={{ width: `${pct}%` }} />
+      </div>
+      <span className={`text-xs font-semibold ${textColor}`}>{pct}%</span>
+    </div>
+  );
+}
+
 export default function UptimeMonitor() {
   const [endpoints, setEndpoints] = useState<EndpointStatus[]>(initialEndpoints);
   const [lastRefresh, setLastRefresh] = useState<string>('');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [initialLoad, setInitialLoad] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const checkAll = async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch('/api/monitor/check');
+      if (!res.ok) throw new Error(`API responded with ${res.status}`);
       const data = await res.json();
       if (data.results) {
         setEndpoints((prev) =>
@@ -41,10 +113,11 @@ export default function UptimeMonitor() {
         );
       }
       setLastRefresh(new Date().toLocaleTimeString());
-    } catch {
-      // network error — keep previous state
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reach the monitoring API.');
     } finally {
       setLoading(false);
+      setInitialLoad(false);
     }
   };
 
@@ -52,204 +125,190 @@ export default function UptimeMonitor() {
     checkAll();
     const interval = setInterval(checkAll, 30000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const upCount = endpoints.filter((e) => e.status === 'up').length;
   const downCount = endpoints.filter((e) => e.status === 'down').length;
+  const avgUptime = endpoints.reduce((acc, e) => acc + e.uptime, 0) / endpoints.length;
 
   return (
     <>
-      <style>{`
-        :root {
-          --bg: #0f1117;
-          --surface: #1a1d27;
-          --surface2: #22263a;
-          --border: #2e3350;
-          --accent: #6366f1;
-          --accent-glow: rgba(99,102,241,0.25);
-          --text: #f1f5f9;
-          --muted: #94a3b8;
-          --up: #22c55e;
-          --down: #ef4444;
-          --checking: #f59e0b;
-          --radius: 12px;
-          --font: 'Inter', system-ui, sans-serif;
-        }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; }
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-      `}</style>
-      <link rel="preconnect" href="https://fonts.googleapis.com" />
-      <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
-        rel="stylesheet"
-      />
+      <Head>
+        <title>Uptime Monitor</title>
+        <meta name="description" content="Real-time uptime monitoring dashboard" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+      </Head>
 
-      <div style={{ maxWidth: 860, margin: '0 auto', padding: '40px 20px' }}>
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32 }}>
-          <div>
-            <h1 style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.5px' }}>
-              <span style={{ color: 'var(--accent)' }}>●</span> Uptime Monitor
-            </h1>
-            <p style={{ color: 'var(--muted)', marginTop: 4, fontSize: 14 }}>
-              {lastRefresh ? `Last checked at ${lastRefresh}` : 'Checking…'}
-            </p>
-          </div>
-          <button
-            onClick={checkAll}
-            disabled={loading}
-            style={{
-              background: loading ? 'var(--surface2)' : 'var(--accent)',
-              color: '#fff',
-              border: 'none',
-              borderRadius: 8,
-              padding: '10px 20px',
-              fontSize: 14,
-              fontWeight: 600,
-              cursor: loading ? 'not-allowed' : 'pointer',
-              transition: 'all 0.15s',
-              boxShadow: loading ? 'none' : '0 0 20px var(--accent-glow)',
-            }}
-          >
-            {loading ? 'Checking…' : 'Refresh Now'}
-          </button>
-        </div>
+      <div className="min-h-screen bg-[#0f172a] text-slate-100">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-10">
 
-        {/* Summary cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 32 }}>
-          {[
-            { label: 'Total Monitored', value: endpoints.length, color: 'var(--text)' },
-            { label: 'Operational', value: upCount, color: 'var(--up)' },
-            { label: 'Incidents', value: downCount, color: downCount > 0 ? 'var(--down)' : 'var(--muted)' },
-          ].map((card) => (
-            <div
-              key={card.label}
-              style={{
-                background: 'var(--surface)',
-                border: '1px solid var(--border)',
-                borderRadius: 'var(--radius)',
-                padding: '20px 24px',
-              }}
-            >
-              <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 8, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                {card.label}
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-10">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-indigo-400 text-xl leading-none">●</span>
+                <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Uptime Monitor</h1>
               </div>
-              <div style={{ fontSize: 36, fontWeight: 700, color: card.color }}>{card.value}</div>
+              <p className="text-slate-400 text-sm">
+                {initialLoad
+                  ? 'Running initial checks…'
+                  : lastRefresh
+                  ? `Last refreshed at ${lastRefresh} · auto-refreshes every 30s`
+                  : 'Ready'}
+              </p>
             </div>
-          ))}
-        </div>
-
-        {/* Endpoint table */}
-        <div
-          style={{
-            background: 'var(--surface)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius)',
-            overflow: 'hidden',
-          }}
-        >
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 100px 110px 90px 90px',
-              padding: '12px 20px',
-              borderBottom: '1px solid var(--border)',
-              fontSize: 12,
-              fontWeight: 600,
-              color: 'var(--muted)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-            }}
-          >
-            <span>Endpoint</span>
-            <span>Status</span>
-            <span>Response</span>
-            <span>Uptime</span>
-            <span>Code</span>
+            <button
+              onClick={checkAll}
+              disabled={loading}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all duration-150
+                bg-indigo-500 text-white shadow-lg
+                hover:bg-indigo-400
+                disabled:opacity-50 disabled:cursor-not-allowed
+                focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-[#0f172a]"
+            >
+              {loading && (
+                <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                </svg>
+              )}
+              {loading ? 'Checking…' : 'Refresh Now'}
+            </button>
           </div>
 
-          {endpoints.map((ep, i) => (
-            <div
-              key={ep.url}
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 100px 110px 90px 90px',
-                padding: '16px 20px',
-                borderBottom: i < endpoints.length - 1 ? '1px solid var(--border)' : 'none',
-                alignItems: 'center',
-                transition: 'background 0.1s',
-              }}
-            >
-              <span
-                style={{
-                  fontSize: 14,
-                  fontWeight: 500,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
+          {/* Error banner */}
+          {error && (
+            <div className="mb-6 flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3.5 text-sm">
+              <svg className="w-5 h-5 mt-0.5 shrink-0 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+              </svg>
+              <div className="flex-1">
+                <p className="font-semibold text-red-300 mb-0.5">Monitoring API unreachable</p>
+                <p className="text-red-400/80">{error}</p>
+              </div>
+              <button
+                onClick={() => setError(null)}
+                className="text-red-400 hover:text-red-200 transition-colors text-lg leading-none"
+                aria-label="Dismiss error"
               >
-                {ep.url}
-              </span>
-
-              <span>
-                <span
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    fontSize: 13,
-                    fontWeight: 600,
-                    color:
-                      ep.status === 'up'
-                        ? 'var(--up)'
-                        : ep.status === 'down'
-                        ? 'var(--down)'
-                        : 'var(--checking)',
-                  }}
-                >
-                  <span
-                    style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: '50%',
-                      background:
-                        ep.status === 'up'
-                          ? 'var(--up)'
-                          : ep.status === 'down'
-                          ? 'var(--down)'
-                          : 'var(--checking)',
-                      boxShadow:
-                        ep.status === 'up'
-                          ? '0 0 6px var(--up)'
-                          : ep.status === 'down'
-                          ? '0 0 6px var(--down)'
-                          : '0 0 6px var(--checking)',
-                    }}
-                  />
-                  {ep.status === 'checking' ? 'Checking' : ep.status === 'up' ? 'Up' : 'Down'}
-                </span>
-              </span>
-
-              <span style={{ fontSize: 13, color: 'var(--muted)' }}>
-                {ep.responseTime != null ? `${ep.responseTime} ms` : '—'}
-              </span>
-
-              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--up)' }}>
-                {ep.uptime}%
-              </span>
-
-              <span style={{ fontSize: 13, color: 'var(--muted)' }}>
-                {ep.statusCode ?? '—'}
-              </span>
+                ×
+              </button>
             </div>
-          ))}
-        </div>
+          )}
 
-        <p style={{ textAlign: 'center', color: 'var(--muted)', fontSize: 12, marginTop: 24 }}>
-          Auto-refreshes every 30 seconds
-        </p>
+          {/* Summary cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+            {[
+              { label: 'Monitored', value: endpoints.length, sub: 'endpoints', color: 'text-slate-100' },
+              { label: 'Operational', value: upCount, sub: 'online', color: 'text-green-400' },
+              { label: 'Incidents', value: downCount, sub: 'offline', color: downCount > 0 ? 'text-red-400' : 'text-slate-500' },
+              {
+                label: 'Avg Uptime',
+                value: `${avgUptime.toFixed(1)}%`,
+                sub: 'overall',
+                color: avgUptime >= 99 ? 'text-green-400' : 'text-amber-400',
+              },
+            ].map((card) => (
+              <div
+                key={card.label}
+                className="bg-slate-800/60 border border-slate-700/60 rounded-xl p-5
+                  transition-all duration-150 hover:border-slate-600 hover:bg-slate-800 cursor-default"
+              >
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-2">{card.label}</p>
+                <p className={`text-3xl font-bold ${card.color}`}>{card.value}</p>
+                <p className="text-xs text-slate-600 mt-1">{card.sub}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Endpoints table */}
+          <div className="bg-slate-800/60 border border-slate-700/60 rounded-2xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-700/60 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-slate-300">Monitored Endpoints</h2>
+              {loading && !initialLoad && (
+                <span className="text-xs text-slate-500 flex items-center gap-1.5">
+                  <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                  </svg>
+                  Refreshing
+                </span>
+              )}
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-700/60">
+                    {['Endpoint', 'Status', 'Response Time', 'Uptime', 'HTTP Code'].map((h) => (
+                      <th
+                        key={h}
+                        className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap"
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {initialLoad
+                    ? Array.from({ length: 4 }).map((_, i) => <SkeletonRow key={i} />)
+                    : endpoints.map((ep, i) => (
+                        <tr
+                          key={ep.url}
+                          className={`
+                            border-b border-slate-700/40 transition-colors duration-100
+                            hover:bg-slate-700/30
+                            ${i === endpoints.length - 1 ? 'border-b-0' : ''}
+                          `}
+                        >
+                          <td className="px-6 py-4">
+                            <span
+                              className="font-medium text-slate-200 truncate block max-w-[180px] sm:max-w-xs"
+                              title={ep.url}
+                            >
+                              {ep.url.replace(/^https?:\/\//, '')}
+                            </span>
+                            <span className="text-xs text-slate-600">{ep.url}</span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <StatusBadge status={ep.status} />
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            {ep.responseTime != null ? (
+                              <span
+                                className={`font-mono text-sm ${
+                                  ep.responseTime < 300
+                                    ? 'text-green-400'
+                                    : ep.responseTime < 800
+                                    ? 'text-amber-400'
+                                    : 'text-red-400'
+                                }`}
+                              >
+                                {ep.responseTime} ms
+                              </span>
+                            ) : (
+                              <span className="text-slate-600">—</span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4">
+                            <UptimeBar pct={ep.uptime} />
+                          </td>
+                          <td className="px-6 py-4">
+                            <HttpCodeBadge code={ep.statusCode} />
+                          </td>
+                        </tr>
+                      ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <p className="text-center text-slate-600 text-xs mt-8">
+            Built with Next.js · Deployed on Vercel
+          </p>
+        </div>
       </div>
     </>
   );
