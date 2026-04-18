@@ -1,0 +1,5 @@
+[
+  {"url": "https://example.com", "label": "Example"},
+  {"url": "https://github.com", "label": "GitHub"},
+  {"url": "https://vercel.com", "label": "Vercel"}
+]
