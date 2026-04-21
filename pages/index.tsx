@@ -5,11 +5,13 @@ import { useState, useEffect, useCallback } from 'react';
 interface Endpoint {
   url: string;
   label: string;
+  public_slug?: string;
 }
 
 interface EndpointStatus {
   url: string;
   label: string;
+  public_slug?: string;
   status: 'up' | 'down' | 'checking';
   statusCode?: number;
   responseTime?: number;
@@ -90,7 +92,9 @@ export default function UptimeMonitor() {
     (epList: Endpoint[], statuses: EndpointStatus[]) =>
       epList.map((ep) => {
         const existing = statuses.find((s) => s.url === ep.url);
-        return existing ?? { ...ep, status: 'checking' as const, uptime: 100 };
+        return existing
+          ? { ...existing, public_slug: ep.public_slug }
+          : { ...ep, status: 'checking' as const, uptime: 100 };
       }),
     []
   );
@@ -424,15 +428,27 @@ export default function UptimeMonitor() {
                             <HttpCodeBadge code={ep.statusCode} />
                           </td>
                           <td className="px-6 py-4">
-                            <button
-                              onClick={() => handleDelete(ep.url)}
-                              disabled={deletingUrl === ep.url}
-                              className="text-xs text-slate-500 hover:text-red-400 transition-colors disabled:opacity-40
-                                px-2 py-1 rounded border border-transparent hover:border-red-400/30"
-                              aria-label={`Remove ${ep.url}`}
-                            >
-                              {deletingUrl === ep.url ? '…' : 'Remove'}
-                            </button>
+                            <div className="flex items-center gap-2">
+                              {ep.public_slug && (
+                                <Link
+                                  href={`/status/${ep.public_slug}`}
+                                  className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors
+                                    px-2 py-1 rounded border border-indigo-500/30 hover:border-indigo-400/50 whitespace-nowrap"
+                                  title="View public status page"
+                                >
+                                  Share
+                                </Link>
+                              )}
+                              <button
+                                onClick={() => handleDelete(ep.url)}
+                                disabled={deletingUrl === ep.url}
+                                className="text-xs text-slate-500 hover:text-red-400 transition-colors disabled:opacity-40
+                                  px-2 py-1 rounded border border-transparent hover:border-red-400/30"
+                                aria-label={`Remove ${ep.url}`}
+                              >
+                                {deletingUrl === ep.url ? '…' : 'Remove'}
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}

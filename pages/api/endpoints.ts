@@ -5,6 +5,7 @@ import path from 'path';
 export interface Endpoint {
   url: string;
   label: string;
+  public_slug?: string;
 }
 
 const DATA_FILE = path.join(process.cwd(), 'data', 'endpoints.json');

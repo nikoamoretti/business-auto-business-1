@@ -1,5 +1,5 @@
 [
-  {"url": "https://example.com", "label": "Example"},
-  {"url": "https://github.com", "label": "GitHub"},
-  {"url": "https://vercel.com", "label": "Vercel"}
+  {"url": "https://example.com", "label": "Example", "public_slug": "example"},
+  {"url": "https://github.com", "label": "GitHub", "public_slug": "github"},
+  {"url": "https://vercel.com", "label": "Vercel", "public_slug": "vercel"}
 ]
